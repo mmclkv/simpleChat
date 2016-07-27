@@ -11,6 +11,11 @@
 
 std::set<int> conns;
 char buf[BUFFLEN];
+struct sockaddr_in serv_addr, clnt_addr;
+struct epoll_event ev, events[MAX_EVENTS];
+int listenSocket, connectSocket, nfds, epollfd; 
+socklen_t clnt_len;
+int n;
 
 void processMsg(int fd) {
     int numOfTotalRecv = 0, numOfCurrentRecv;
@@ -20,15 +25,33 @@ void processMsg(int fd) {
                                     0)) > 0) {
         numOfTotalRecv += numOfCurrentRecv;
     }
-    if (errno != EAGAIN && errno != EWOULDBLOCK) {
-        //error on recv
-        reportErr("error on recv()");
+    if (numOfCurrentRecv == 0) {
+        //client has disconnected decently
+        printf("client has disconnected decently\n");
+        conns.erase(fd);
+        if (epoll_ctl(epollfd, EPOLL_CTL_DEL, 
+                      fd, &ev) == -1) {
+            reportErr("error on epoll_ctl()");
+        }
+        shutdown(fd, SHUT_WR);
     }
-    //received the messages successfully
-    for (auto connfd: conns) {
-        if (connfd != fd) {
-            if (send(connfd, buf, numOfTotalRecv, 0) != numOfTotalRecv) {
-                reportErr("error on send()");
+    else if (errno != EAGAIN && errno != EWOULDBLOCK) {
+        //client has disconnected indecently
+        printf("client has disconnected indecently\n");
+        conns.erase(fd);
+        if (epoll_ctl(epollfd, EPOLL_CTL_DEL, 
+                      fd, &ev) == -1) {
+            reportErr("error on epoll_ctl()");
+        }
+        shutdown(fd, SHUT_WR);
+    }
+    else {
+        //received the messages successfully
+        for (auto connfd: conns) {
+            if (connfd != fd) {
+                if (send(connfd, buf, numOfTotalRecv, 0) != numOfTotalRecv) {
+                    reportErr("error on send()");
+                }
             }
         }
     }
@@ -36,10 +59,6 @@ void processMsg(int fd) {
 
 int main() {
 
-    struct sockaddr_in serv_addr, clnt_addr;
-    struct epoll_event ev, events[MAX_EVENTS];
-    int listenSocket, connectSocket, nfds, epollfd; 
-    socklen_t clnt_len;
     // create a socket
     listenSocket = socket(AF_INET, SOCK_STREAM, 0);
     if (listenSocket == -1) {
@@ -82,7 +101,7 @@ int main() {
             reportErr("error on epoll_wait()");
         }
 
-        for (int n = 0; n < nfds; ++n) {
+        for (n = 0; n < nfds; ++n) {
             if (events[n].data.fd == listenSocket) {
                 //new connection comes
                 connectSocket = accept(listenSocket, 
