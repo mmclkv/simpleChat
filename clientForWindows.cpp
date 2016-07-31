@@ -18,6 +18,8 @@
 
 char recvbuf[BUFFLEN], sendbuf[BUFFLEN];
 
+SOCKET ConnectSocket;
+
 int connect_retry(const std::string& userName, int sockfd, const struct sockaddr* addr, socklen_t alen) {
 	for (int nsec = 1; nsec <= MAXSLEEP; nsec <<= 1) {
 		if (connect(sockfd, addr, alen) == 0) {
@@ -46,7 +48,42 @@ void processRecvBuf(int sockfd) {
 
 }
 
+BOOL CtrlHandler(DWORD fdwCtrlType) {
+	int iResult;
+	switch (fdwCtrlType) {
+		case CTRL_C_EVENT:
+		case CTRL_CLOSE_EVENT:
+		case CTRL_BREAK_EVENT:
+		case CTRL_LOGOFF_EVENT:
+		case CTRL_SHUTDOWN_EVENT:
+
+			// shutdown the send half of the connection since no more data will be sent
+			iResult = shutdown(ConnectSocket, SD_SEND);
+			if (iResult == SOCKET_ERROR) {
+				printf("shutdown failed: %d\n", WSAGetLastError());
+				closesocket(ConnectSocket);
+				WSACleanup();
+				system("pause");
+				return 1;
+			}
+
+			closesocket(ConnectSocket);
+			WSACleanup();
+
+			break;
+
+		default:
+			return FALSE;
+	}
+}
+
 int main() {
+
+	if (!SetConsoleCtrlHandler((PHANDLER_ROUTINE)CtrlHandler, TRUE)) {
+		std::cout << "error on SetConsoleCtrlHandler()" << std::endl;
+		return 1;
+	}
+
 	WSADATA wsaData;
 
 	int iResult;
@@ -64,7 +101,7 @@ int main() {
 		return 1;
 	}
 
-	SOCKET ConnectSocket = INVALID_SOCKET;
+	ConnectSocket = INVALID_SOCKET;
 
 	//create a socket
 	ConnectSocket = socket(AF_INET, SOCK_STREAM, 0);
@@ -123,18 +160,5 @@ int main() {
 		}
 	}
 
-	// shutdown the send half of the connection since no more data will be sent
-	iResult = shutdown(ConnectSocket, SD_SEND);
-	if (iResult == SOCKET_ERROR) {
-		printf("shutdown failed: %d\n", WSAGetLastError());
-		closesocket(ConnectSocket);
-		WSACleanup();
-		system("pause");
-		return 1;
-	}
-
-	closesocket(ConnectSocket);
-	WSACleanup();
-	system("pause");
 	return 0;
 }
