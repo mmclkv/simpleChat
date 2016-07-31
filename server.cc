@@ -41,7 +41,8 @@ void processMsg(int fd) {
     }
     else if (errno != EAGAIN && errno != EWOULDBLOCK) {
         //client has disconnected indecently
-        printf("client has disconnected indecently\n");
+        std::cout << "client " << conns[fd] << " has disconnected indecently" 
+                  << std::endl;
         conns.erase(fd);
         if (epoll_ctl(epollfd, EPOLL_CTL_DEL, 
                       fd, &ev) == -1) {
