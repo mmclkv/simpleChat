@@ -8,6 +8,10 @@
 #define BUFFLEN 1024
 #define LOCALADDR "127.0.0.1"
 
+#define MAXSLEEP 128
+#define HEADER_ID '0'
+#define HEADER_MSG '1'
+
 void reportErr(const char* message) {
     perror(message);
     exit(EXIT_FAILURE);

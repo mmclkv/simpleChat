@@ -1,5 +1,6 @@
 #include <iostream>
-#include <set>
+#include <map>
+#include <string>
 #include <sys/epoll.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -9,8 +10,10 @@
 #include <stdio.h>
 #include "utils.hpp"
 
-std::set<int> conns;
+std::map<int, std::string> conns;
 char buf[BUFFLEN];
+const char welcome[] = " has entered the chatting room\n";
+
 struct sockaddr_in serv_addr, clnt_addr;
 struct epoll_event ev, events[MAX_EVENTS];
 int listenSocket, connectSocket, nfds, epollfd; 
@@ -27,7 +30,8 @@ void processMsg(int fd) {
     }
     if (numOfCurrentRecv == 0) {
         //client has disconnected decently
-        printf("client has disconnected decently\n");
+        std::cout << "client " << conns[fd] << " has disconnected decently" 
+                  << std::endl;
         conns.erase(fd);
         if (epoll_ctl(epollfd, EPOLL_CTL_DEL, 
                       fd, &ev) == -1) {
@@ -47,10 +51,29 @@ void processMsg(int fd) {
     }
     else {
         //received the messages successfully
-        for (auto connfd: conns) {
-            if (connfd != fd) {
-                if (send(connfd, buf, numOfTotalRecv, 0) != numOfTotalRecv) {
-                    reportErr("error on send()");
+        //confirm the type of the message
+        if (buf[0] == HEADER_ID) {
+            //register the id and inform other clients
+            conns[fd] = buf + 1;
+            int nameLen = strlen(buf + 1);
+            strncpy(buf + 1 + nameLen, welcome, sizeof(welcome));
+            for (auto& connPair : conns) {
+                if (connPair.first != fd) {
+                    if (send(connPair.first, buf + 1, 
+                             nameLen + sizeof(welcome), 0) == -1) {
+                        reportErr("error on send()");
+                    }
+                }
+            }
+            
+        }
+        else if (buf[0] == HEADER_MSG) {
+            for (auto& connPair: conns) {
+                if (connPair.first != fd) {
+                    if (send(connPair.first, buf + 1, numOfTotalRecv - 1, 0) 
+                        != numOfTotalRecv - 1) {
+                        reportErr("error on send()");
+                    }
                 }
             }
         }
@@ -117,7 +140,7 @@ int main() {
                               &ev) == -1) {
                     reportErr("error on epoll_ctl()");
                 }
-                conns.insert(connectSocket);
+                conns.insert(std::pair<int, std::string>(connectSocket, ""));
             }
             else if (events[n].events & EPOLLRDHUP) {
                 //client has disconnected
